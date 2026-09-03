@@ -1,0 +1,17 @@
+# /etc/netplan/00-installer-config.yaml  on the SERVER VM (192.168.10.100)
+# `match: name: "en*"` avoids hardcoding the interface name -- on Fusion/ARM the
+# vmxnet3 NIC comes up as ens160 or similar, not the ens33 in the handout.
+network:
+  version: 2
+  ethernets:
+    lan:
+      match:
+        name: "en*"
+      dhcp4: false
+      addresses:
+        - 192.168.10.100/24
+      routes:
+        - to: default
+          via: 192.168.10.1
+      nameservers:
+        addresses: [8.8.8.8, 8.8.4.4]

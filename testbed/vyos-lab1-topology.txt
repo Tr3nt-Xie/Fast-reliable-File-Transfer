@@ -1,0 +1,40 @@
+# EE542 Lab 1 - VyOS router configuration
+# Addresses adapted to THIS Mac: Fusion's NAT network (vmnet8) is 192.168.182.0/24,
+# not the 192.168.184.0/24 in the handout. The Fusion NAT gateway is always .2.
+#
+# Log in as vyos, then paste this block.
+
+configure
+
+# --- interfaces -------------------------------------------------------------
+set interfaces ethernet eth0 address '192.168.182.50/24'
+set interfaces ethernet eth0 description 'WAN'
+set interfaces ethernet eth1 address '192.168.10.1/24'
+set interfaces ethernet eth1 description 'LAN-Server'
+set interfaces ethernet eth2 address '192.168.20.1/24'
+set interfaces ethernet eth2 description 'LAN-Client'
+
+# --- default route out through Fusion's NAT ---------------------------------
+set protocols static route 0.0.0.0/0 next-hop '192.168.182.2'
+set system name-server '8.8.8.8'
+
+# --- source NAT so both LANs can reach the internet -------------------------
+# "outbound-interface name" is correct for this build (verified against the
+# vyos-1x templates: nat/source/rule/node.tag/outbound-interface/name exists).
+set nat source rule 100 outbound-interface name 'eth0'
+set nat source rule 100 source address '192.168.10.0/24'
+set nat source rule 100 translation address 'masquerade'
+set nat source rule 200 outbound-interface name 'eth0'
+set nat source rule 200 source address '192.168.20.0/24'
+set nat source rule 200 translation address 'masquerade'
+
+# --- remote management ------------------------------------------------------
+set service ssh port '22'
+
+commit
+save
+exit
+
+# NOTE: do NOT run the handout's `set system ip forwarding`. That node does not
+# exist in this build (system/ip/ only has disable-forwarding). IP forwarding is
+# on by default; verify with:  show ip route
