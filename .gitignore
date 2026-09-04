@@ -1,0 +1,19 @@
+# Build output
+*.o
+*.out
+src/client
+src/server
+probe/probe_send
+probe/probe_recv
+
+# Test data - never commit the 1 GB file
+*.bin
+*.iso
+*.mp4
+*.mov
+
+# Run logs (measurement result CSVs are kept, raw logs are not)
+*.log
+!measure/results/*.csv
+
+.DS_Store
