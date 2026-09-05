@@ -57,3 +57,6 @@ md5sum ~/lab2-received.bin
 ```
 
 Protocol: `META -> READY -> DATA -> FIN -> NACK/retransmit or DONE`.
+
+The sender acknowledges DONE with DONE_ACK to finish the transfer. Synchronize
+both VM clocks before measuring one-way transfer time.

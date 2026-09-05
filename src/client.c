@@ -136,7 +136,8 @@ static size_t read_chunk(int fd, void *buffer, size_t length, off_t offset)
 }
 
 static void send_data(int sock, int fd, uint64_t sequence, uint32_t payload,
-                      uint64_t file_size, char *datagram, struct pacer *pacer)
+                      uint64_t file_size, char *datagram, struct pacer *pacer,
+                      uint64_t *first_send_ns)
 {
     uint64_t offset = sequence * (uint64_t)payload;
     size_t body = payload;
@@ -144,6 +145,7 @@ static void send_data(int sock, int fd, uint64_t sequence, uint32_t payload,
 
     read_chunk(fd, datagram + FT_HDRLEN, body, (off_t)offset);
     make_hdr((struct ft_hdr *)datagram, FT_DATA, sequence);
+    if (first_send_ns && *first_send_ns == 0) *first_send_ns = realtime_ns();
     send_retry(sock, datagram, FT_HDRLEN + body);
     pacer_wait(pacer);
 }
@@ -278,12 +280,11 @@ int main(int argc, char *argv[])
 
     struct timespec monotonic_start, monotonic_after_initial;
     if (clock_gettime(CLOCK_MONOTONIC, &monotonic_start) < 0) die("clock_gettime");
-    uint64_t sender_start_ns = realtime_ns();
-    printf("sender_start_realtime_ns=%" PRIu64 "\n", sender_start_ns);
-    fflush(stdout);
+    uint64_t sender_start_ns = 0;
 
     for (uint64_t sequence = 0; sequence < total_pkts; sequence++) {
-        send_data(sock, fd, sequence, payload, file_size, datagram, &pacer);
+        send_data(sock, fd, sequence, payload, file_size, datagram, &pacer,
+                  &sender_start_ns);
     }
     if (clock_gettime(CLOCK_MONOTONIC, &monotonic_after_initial) < 0) die("clock_gettime");
 
@@ -293,7 +294,7 @@ int main(int argc, char *argv[])
     uint64_t receiver_end_ns = 0;
     int complete = 0;
 
-    while (!complete && fin_attempts < 200) {
+    while (!complete && fin_attempts < FT_MAX_FIN_ATTEMPTS) {
         memset(requested, 0, bitmap_bytes);
         uint64_t requested_count = 0;
         make_hdr((struct ft_hdr *)datagram, FT_FIN, feedback_round);
@@ -307,7 +308,7 @@ int main(int argc, char *argv[])
         while (!feedback_finished) {
             if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) die("clock_gettime");
             double waited = secs_between(wait_start, now);
-            int remaining_ms = (int)((1.5 - waited) * 1000.0);
+            int remaining_ms = (int)(FT_FEEDBACK_TIMEOUT_MS - waited * 1000.0);
             if (remaining_ms <= 0) break;
 
             struct pollfd pfd = { .fd = sock, .events = POLLIN };
@@ -372,7 +373,8 @@ int main(int argc, char *argv[])
         pacer_reset(&pacer);
         for (uint64_t sequence = 0; sequence < total_pkts; sequence++) {
             if (TEST(requested, sequence)) {
-                send_data(sock, fd, sequence, payload, file_size, datagram, &pacer);
+                send_data(sock, fd, sequence, payload, file_size, datagram, &pacer,
+                          &sender_start_ns);
                 retransmitted++;
             }
         }
@@ -385,11 +387,23 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    /* Echo the completion timestamp so the receiver can validate the close.
+     * Losing all copies is harmless: it retains DONE for the retry budget. */
+    struct ft_done close_ack = { .receiver_end_realtime_ns = receiver_end_ns };
+    done_hton(&close_ack);
+    make_hdr((struct ft_hdr *)datagram, FT_DONE_ACK, 0);
+    memcpy(datagram + FT_HDRLEN, &close_ack, sizeof(close_ack));
+    for (int copy = 0; copy < 5; copy++) {
+        send_retry(sock, datagram, FT_HDRLEN + sizeof(close_ack));
+        sleep_ms(2);
+    }
+
     struct timespec monotonic_done;
     if (clock_gettime(CLOCK_MONOTONIC, &monotonic_done) < 0) die("clock_gettime");
     double initial_seconds = secs_between(monotonic_start, monotonic_after_initial);
     double sender_runtime = secs_between(monotonic_start, monotonic_done);
 
+    printf("sender_start_realtime_ns=%" PRIu64 "\n", sender_start_ns);
     printf("--- client sender ---\n");
     printf("  original packets   %" PRIu64 "\n", total_pkts);
     printf("  retransmitted      %" PRIu64 "\n", retransmitted);

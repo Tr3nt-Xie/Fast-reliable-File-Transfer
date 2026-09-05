@@ -21,8 +21,16 @@ enum ft_type {
     FT_READY    = 4,
     FT_NACK     = 5,
     FT_NACK_END = 6,
-    FT_DONE     = 7
+    FT_DONE     = 7,
+    FT_DONE_ACK = 8
 };
+
+/* Keep completion replies available throughout the sender's FIN retry budget.
+ * DONE_ACK normally lets the receiver close immediately. */
+#define FT_FEEDBACK_TIMEOUT_MS 1500
+#define FT_MAX_FIN_ATTEMPTS 200
+#define FT_COMPLETION_LINGER_SECONDS \
+    ((FT_FEEDBACK_TIMEOUT_MS * FT_MAX_FIN_ATTEMPTS + 999) / 1000 + 5)
 
 /* Fixed 16-byte header. For FT_NACK, seq is the feedback round number. */
 struct ft_hdr {

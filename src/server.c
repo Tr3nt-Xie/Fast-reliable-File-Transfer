@@ -366,6 +366,23 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        if (header.type == FT_DONE_ACK) {
+            if (complete && synced &&
+                length == FT_HDRLEN + (ssize_t)sizeof(struct ft_done)) {
+                struct ft_done ack;
+                memcpy(&ack, datagram + FT_HDRLEN, sizeof(ack));
+                done_ntoh(&ack);
+                if (ack.receiver_end_realtime_ns == receiver_end_ns) {
+                    /* Drain repeated close acknowledgements before closing the
+                     * socket, avoiding ICMP errors at the connected sender. */
+                    set_timeout(sock, 1);
+                    continue;
+                }
+            }
+            bogus++;
+            continue;
+        }
+
         if (header.type == FT_FIN) {
             if (complete) {
                 if (!synced) {
@@ -373,7 +390,7 @@ int main(int argc, char *argv[])
                     synced = 1;
                 }
                 send_done(sock, datagram, &peer, receiver_end_ns);
-                set_timeout(sock, 2);
+                set_timeout(sock, FT_COMPLETION_LINGER_SECONDS);
             } else {
                 uint64_t missing = send_nacks(sock, datagram, payload, &peer,
                                               seen, total_pkts, header.seq);
