@@ -17,3 +17,6 @@ probe/probe_recv
 !measure/results/*.csv
 
 .DS_Store
+
+# Local only: report drafts, demo script, measurement data
+private/
