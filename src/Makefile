@@ -4,7 +4,7 @@ BINS   = client server
 
 all: $(BINS)
 client: client.c proto.h
-	$(CC) $(CFLAGS) -o $@ client.c
+	$(CC) $(CFLAGS) -o $@ client.c -lm
 server: server.c proto.h
 	$(CC) $(CFLAGS) -o $@ server.c
 clean:
